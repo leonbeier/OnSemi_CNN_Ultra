@@ -1,5 +1,5 @@
 /*
-    Name: AR0430 Camera
+    Name: AR0830 Camera
     Rev: 1.0
     Creator: Leon Beier
     Date: 26.11.2021
@@ -30,9 +30,9 @@
                   outputs the received camera data.
     
     Insertion:   -Right click on the CSI_Camera folder and the I2C library -> Add to active project
-                 -Add NewComponent of AR0430_Camera into your code
+                 -Add NewComponent of AR0830_Camera into your code
                  -Set CLK_Frequency to the frequency of the clock you connect with CLK of this component (>50MHz)
-                 -Right click AR0430_Camera next to NewComponent and create the required signals
+                 -Right click AR0830_Camera next to NewComponent and create the required signals
     
     Function:    1. Wait until Column changes
                  2. Read the pixel value at the current Row and Column (The image is 640x480)
@@ -61,8 +61,6 @@ Component AR0830_Camera
     SDA         : INOUT STD_LOGIC;
     
     oStream     : OUT rgb_stream;
-    
-    debug       : OUT STD_LOGIC_VECTOR(7 downto 0);
 )
 {
     Function f_log2 (return natural; x : positive )
@@ -128,12 +126,6 @@ Component AR0830_Camera
 
     SIGNAL Row_Reset : STD_LOGIC := '0';
     Row_Reset <= '1' when Frame_Sync_reg = '1' else '0' when Stream_Out_Reg.Row = 0 else Row_Reset;
-
-    debug(4) <= Row_Reset;
-    debug(5) <= '1' when Pixel_Clk_Start else '0';
-    debug(6) <= Stream_Out_Reg.New_Pixel;
-    debug(1) <= STD_LOGIC_VECTOR(TO_UNSIGNED(Stream_Out_Reg.Column, 12))(0);
-    debug(2) <= STD_LOGIC_VECTOR(TO_UNSIGNED(Stream_Out_Reg.Row, 12))(0);
     
     Process ()
     {
@@ -305,16 +297,6 @@ Component AR0830_Camera
     SIGNAL Column_Sync_reg   : STD_LOGIC := '0';
     SIGNAL Bayer_Pol_reg     : STD_LOGIC := '0';
     
-    --debug(7) <= Reset;
-    --debug(6) <= Cam_Reset;
-    --debug(6) <= Pixel_Clock_reg;
-    debug(0) <= Pixel_Clock_reg;
-    --debug(1) <= Frame_Sync_reg;
-    --debug(2) <= Column_Sync_reg;
-    debug(3) <= Bayer_Pol_reg;
-    
-    debug(7) <= D_CLK;
-    
     TYPE Pixel_RGB_type IS RECORD
     R : STD_LOGIC_VECTOR(7 downto 0);
     G : STD_LOGIC_VECTOR(7 downto 0);
@@ -448,7 +430,6 @@ Component AR0830_Camera
                 
                 If(Byte_Count = 1)
                 {
-                    --debug(4) <= '1';
                     --0x00 is VSync
                     If(Byte_Data_1 = x"00")
                     {
@@ -509,22 +490,6 @@ Component AR0830_Camera
         }
     }
     
-    /*
-    NewComponent AR0830_Cam_Config
-    (
-        CLK_Frequency => CLK_Frequency,
-
-        Reset         => Reset,
-        Cam_Reset     => Cam_Reset,
-        SCL           => SCL,
-        SDA           => SDA,
-        
-        iStream       => Brighness_Stream_In,
-        
-        --debug(5 downto 0) => debug(5 downto 0),
-    );
-    */
-    
     NewComponent AR0830_Cam_Config_Test
     (
         CLK_Frequency => CLK_Frequency,
@@ -535,23 +500,5 @@ Component AR0830_Camera
         SDA           => SDA,
         
         iStream       => Brighness_Stream_In,
-        
-        --debug => debug,
     );
-    
-    /*
-    NewComponent AR0830_Test_Config
-    (
-        CLK_Frequency => CLK_Frequency,
-
-        Reset         => Reset,
-        Cam_Reset     => Cam_Reset,
-        SCL           => SCL,
-        SDA           => SDA,
-        
-        iStream       => Brighness_Stream_In,
-        
-        --debug(5 downto 0) => debug(5 downto 0),
-    );
-    */
 }
