@@ -35,7 +35,7 @@ Main
     --More Settings in Libraries/OnSemi_Image_Data_USB.vhdp
 
     --Clock Settings in USB/USB_SDRAM_PLL
-    CONSTANT Pixel_Clock : NATURAL := 25000000;
+    CONSTANT Pixel_Clock : NATURAL := 28000000;
     
     --RAW Camera Stream
     SIGNAL Camera_Stream         : rgb_stream;
