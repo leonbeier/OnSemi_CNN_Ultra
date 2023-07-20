@@ -1,0 +1,111 @@
+Component MAX_Pooling_tb()
+{
+    SIGNAL finished : STD_LOGIC:= '0';
+    CONSTANT period_time : TIME := 83333 ps;
+
+    Process Sim_finished()
+    {
+        wait for 100000 us;
+        finished <= '1';
+        wait;
+    }
+
+    NewComponent MAX_Pooling
+    (
+        Input_Columns => Input_Columns,
+        Input_Rows => Input_Rows,
+        Input_Values => Input_Values,
+        Filter_Columns => Filter_Columns,
+        Filter_Rows => Filter_Rows,
+        iStream => iStream,
+        oStream => oStream,
+        CLK => CLK,
+    );
+    
+    NewComponent RGB_TO_CNN
+    (
+        Input_Values => 1,
+
+        iStream      => oStream,
+        oStream      => oStream_P,
+        oData        => oData_P,
+    );
+    
+    SIGNAL oStream_P : CNN_Stream_T;
+    SIGNAL oData_P   : CNN_Values_T(0 downto 0);
+    
+    SIGNAL oStream_12 : CNN_Stream_T;
+    SIGNAL oData_12   : CNN_Values_T(Layer_1_Filters/4-1 downto 0);
+    
+    NewComponent CNN_Convolution
+    (
+        Input_Columns  => Layer_1_Columns,
+        Input_Rows     => Layer_1_Rows,
+        Input_Values   => Layer_1_Values,
+        Filter_Columns => Layer_1_Filter_X,
+        Filter_Rows    => Layer_1_Filter_Y,
+        Filters        => Layer_1_Filters,
+        Strides        => Layer_1_Strides,  --For 2 Strides -> Columns and Rows should be a divisor of two
+        Activation     => Layer_1_Activation,
+        Padding        => Layer_1_Padding,
+        Value_Cycles   => 1,
+        Calc_Cycles    => 4,
+        Filter_Cycles  => 4,
+        Expand_Cycles  => 240,
+        Offset_In      => 0,
+        Offset_Out     => Layer_1_Out_Offset-3,  --Most values between -2 and 2 although Out_Offset = 3 -> max = 8
+        Offset         => Layer_1_Offset,
+        Weights        => Layer_1,
+
+        iStream        => oStream_P,
+        iData          => oData_P,
+        oStream        => oStream_12,
+        oData          => oData_12,
+    );
+
+    SIGNAL Input_Columns : NATURAL  := 448;
+    SIGNAL Input_Rows : NATURAL  := 448;
+    SIGNAL Input_Values : NATURAL  := 1;
+    SIGNAL Filter_Columns : NATURAL  := 16;
+    SIGNAL Filter_Rows : NATURAL  := 16;
+    SIGNAL iStream : rgb_stream ;
+    SIGNAL oStream : rgb_stream ;
+    SIGNAL CLK : STD_LOGIC := '0';
+    
+    iStream.New_Pixel <= CLK;
+
+    Process()
+    {
+        Thread
+        {
+            For(iStream.Row <= 0; iStream.Row < Image_Height-1; iStream.Row <= iStream.Row + 1)
+            {
+                For(iStream.Column <= 0; iStream.Column < Image_Width-1; iStream.Column <= iStream.Column + 1)
+                {
+                    iStream.R <= STD_LOGIC_VECTOR(TO_UNSIGNED((iStream.Row+iStream.Column) mod 255, 8));
+                }
+            }
+        }
+    }
+
+    Process Sim_iStream()
+    {
+        While(finished /= '1')
+        {
+            wait;
+        }
+        wait;
+    }
+
+    Process Sim_CLK()
+    {
+        While(finished /= '1')
+        {
+            CLK <= '0';
+            wait for period_time/2;
+            CLK <= '1';
+            wait for period_time/2;
+        }
+        wait;
+    }
+}

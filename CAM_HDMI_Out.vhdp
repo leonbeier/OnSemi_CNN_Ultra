@@ -1,0 +1,100 @@
+Component CAM_HDMI_Out
+(
+    iStream     : IN  rgb_stream;
+    
+    sdram_addr   : OUT std_logic_vector (11 downto 0);
+    sdram_ba     : OUT std_logic_vector (1 downto 0);
+    sdram_cas_n  : OUT std_logic;
+    sdram_cke    : OUT std_logic;
+    sdram_cs_n   : OUT std_logic;
+    sdram_dq     : INOUT std_logic_vector (15 downto 0) := (others => '0');
+    sdram_dqm    : OUT std_logic_vector (1 downto 0);
+    sdram_ras_n  : OUT std_logic;
+    sdram_we_n   : OUT std_logic;
+    sdram_clk    : OUT STD_LOGIC;
+    
+    Pixel_CLK    : OUT STD_LOGIC;
+    
+    HDMI_DATA : OUT STD_LOGIC_VECTOR(2 downto 0);
+    HDMI_CLK  : OUT STD_LOGIC;
+    HDMI_HPD  : IN  STD_LOGIC;
+)
+{
+    --Interface for RAM buffer
+    SIGNAL Capture_CLK_140     : STD_LOGIC;
+    SIGNAL Capture_Read_Column : NATURAL          range 0 to Image_Width-1 := 0;
+    SIGNAL Capture_Read_Row    : NATURAL          range 0 to Image_Height-1 := 0;
+    SIGNAL Capture_Read_Data   : STD_LOGIC_VECTOR (23 downto 0) := (others => '0');
+    
+    --Interface for HDMI output
+    SIGNAL VS_PCLK   : STD_LOGIC;
+    SIGNAL VS_SCLK   : STD_LOGIC;
+    SIGNAL VS_R      : STD_LOGIC_VECTOR (7 downto 0);
+    SIGNAL VS_G      : STD_LOGIC_VECTOR (7 downto 0);
+    SIGNAL VS_B      : STD_LOGIC_VECTOR (7 downto 0);
+    SIGNAL VS_HS     : STD_LOGIC;
+    SIGNAL VS_VS     : STD_LOGIC;
+    SIGNAL VS_DE     : STD_LOGIC;
+    
+    Pixel_CLK <= VS_PCLK;
+    
+    --First saves image and then outputs it with correct timing
+    NewComponent Camera_Capture_SDRAM
+    (
+        CLK_Edge    => true,
+
+        iStream     => iStream,
+
+        CLK_140     => Capture_CLK_140,
+        Read_Column => Capture_Read_Column,
+        Read_Row    => Capture_Read_Row,
+        Read_Data   => Capture_Read_Data,
+
+        sdram_addr  => sdram_addr,
+        sdram_ba    => sdram_ba,
+        sdram_cas_n => sdram_cas_n,
+        sdram_dq    => sdram_dq,
+        sdram_dqm   => sdram_dqm,
+        sdram_ras_n => sdram_ras_n,
+        sdram_we_n  => sdram_we_n,
+    );
+    
+    sdram_cke  <= '1';
+    sdram_cs_n <= '0';
+
+    NewComponent VS_SDRAM_Interface
+    (
+        Read_Column    => Capture_Read_Column,
+        Read_Row       => Capture_Read_Row,
+        Read_Data      => Capture_Read_Data,
+
+        CLK_140        => Capture_CLK_140,
+        SDRAM_CLK      => sdram_clk,
+
+        VS_PCLK        => VS_PCLK,
+        VS_SCLK        => VS_SCLK,
+        VS_R           => VS_R,
+        VS_G           => VS_G,
+        VS_B           => VS_B,
+        VS_HS          => VS_HS,
+        VS_VS          => VS_VS,
+        VS_DE          => VS_DE,
+    );
+    
+    --Output video stream with hdmi interface
+    NewComponent HDMI_Out
+    (
+        VS_PCLK    => VS_PCLK,
+        VS_SCLK    => VS_SCLK,
+        VS_R       => VS_R,
+        VS_G       => VS_G,
+        VS_B       => VS_B,
+        VS_HS      => VS_HS,
+        VS_VS      => VS_VS,
+        VS_DE      => VS_DE,
+
+        HDMI_DATA  => HDMI_DATA,
+        HDMI_CLK   => HDMI_CLK,
+        HDMI_HPD   => HDMI_HPD,
+    );
+}

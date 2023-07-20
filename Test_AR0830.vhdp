@@ -1,0 +1,236 @@
+Main
+(
+
+    Camera_CLK_Lane      : IN  STD_LOGIC;
+    Camera_Data_Lane     : IN  STD_LOGIC_VECTOR (3 downto 0);
+    Camera_Cam_Reset     : OUT STD_LOGIC;
+    Camera_Enable        : OUT STD_LOGIC;
+    Camera_SCL           : INOUT STD_LOGIC;
+    Camera_SDA           : INOUT STD_LOGIC;
+
+    HDMI_DATA            : OUT    STD_LOGIC_VECTOR(2 downto 0);
+    HDMI_CLK             : OUT    STD_LOGIC;
+    HDMI_HPD             : IN     STD_LOGIC;
+
+    Capture_sdram_addr   : OUT    STD_LOGIC_VECTOR (11 downto 0);
+    Capture_sdram_ba     : OUT    STD_LOGIC_VECTOR (1 downto 0);
+    Capture_sdram_cas_n  : OUT    STD_LOGIC;
+    Capture_sdram_dq     : INOUT  STD_LOGIC_VECTOR (15 downto 0) := (others => '0');
+    Capture_sdram_dqm    : OUT    STD_LOGIC_VECTOR (1 downto 0);
+    Capture_sdram_ras_n  : OUT    STD_LOGIC;
+    Capture_sdram_we_n   : OUT    STD_LOGIC;
+    Capture_sdram_clk    : OUT    STD_LOGIC;
+    
+    debug : OUT STD_LOGIC_VECTOR(7 downto 0);
+    
+    TX                   : OUT STD_LOGIC;
+    RX                   : IN  STD_LOGIC;
+)
+{
+
+--GENERATED SIGNALS---------------------------------------------------------------------------------------------
+
+    --OnSemi Camera to USB----------------------------------------------------------------------------------------
+
+    --More Settings in Libraries/OnSemi_Image_Data_USB.vhdp
+
+    --Clock Settings in USB/USB_SDRAM_PLL
+    CONSTANT Pixel_Clock : NATURAL := 25000000;
+    
+    --RAW Camera Stream
+    SIGNAL Camera_Stream         : rgb_stream;
+    
+    --Add Blurr to image for less noise
+    SIGNAL Gaussian_Filter_iStream: rgb_stream;
+    SIGNAL Gaussian_Filter_oStream: rgb_stream;
+    
+    --Color Correction Component Streams
+    SIGNAL Color_Correction_Filter_iStream      : rgb_stream;
+    SIGNAL Color_Correction_Filter_oStream      : rgb_stream;
+    
+    --Invert Color and filter black lines
+    SIGNAL MAX_Invert_Filter_iStream      : rgb_stream;
+    SIGNAL MAX_Invert_Filter_oStream      : rgb_stream;
+    SIGNAL Filter_Threshold : INTEGER range 0 to 1000 := 255;
+    
+    --Stream for HDMI output
+    SIGNAL Output_Stream : rgb_stream;
+    
+    --CNN number prediction
+    SIGNAL CNN_Stream         : rgb_stream;
+    SIGNAL CNN_Prediction     : NATURAL range 0 to NN_Layer_1_Outputs - 1;
+    SIGNAL CNN_Probability    : CNN_Value_T; --Value from 0 to 1024
+    
+
+--GENERATED CODE------------------------------------------------------------------------------------------------
+
+    --OnSemi Camera to USB----------------------------------------------------------------------------------------
+
+    Gaussian_Filter_iStream <= Camera_Stream;
+    Color_Correction_Filter_iStream <= Gaussian_Filter_oStream;
+    MAX_Invert_Filter_iStream <= Color_Correction_Filter_oStream;
+    Output_Stream <= MAX_Invert_Filter_oStream;
+    
+    CNN_Stream <= MAX_Invert_Filter_oStream;
+
+
+--GENERATED COMPONENTS------------------------------------------------------------------------------------------
+
+    --OnSemi Camera to USB----------------------------------------------------------------------------------------
+
+--Camera Interface------------------------------------------------------------------
+    
+    Camera_Enable <= '1';
+
+    SIGNAL debug_cam : STD_LOGIC_VECTOR(7 downto 0);
+    
+    --Receive CSI Data
+    NewComponent AR0830_Camera
+    (
+        CLK_Frequency   => Pixel_Clock,
+        CLK_as_PCLK     => true,
+        Auto_Brightness => true,
+
+        CLK           => Pixel_CLK,
+
+        CLK_Lane      => Camera_CLK_Lane,
+        Data_Lane     => Camera_Data_Lane,
+        Cam_Reset     => Camera_Cam_Reset,
+        SCL           => Camera_SCL,
+        SDA           => Camera_SDA,
+
+        oStream       => Camera_Stream,
+        
+        debug => debug,
+    );
+    
+    --Apply Filters-------------------------------------------------------------
+
+    NewComponent Gaussian_Filter
+    (
+        Filter_Area => 3,
+        Color_Depth => 6,
+        Gaussian    => false,
+        HSV_Mode    => false,
+        CLK_Edge    => true,
+
+        iStream     => Gaussian_Filter_iStream,
+        oStream     => Gaussian_Filter_oStream,
+    );
+    
+    NewComponent Color_Correction_Filter
+    (
+        CLK_Edge     => true,
+
+        R_Multiplier => 3,
+        R_Divider    => 2,
+        R_Add        => 0,
+        G_Multiplier => 1,
+        G_Divider    => 1,
+        G_Add        => 0,
+        B_Multiplier => 3,
+        B_Divider    => 2,
+        B_Add        => 0,
+        iStream      => Color_Correction_Filter_iStream,
+        oStream      => Color_Correction_Filter_oStream,
+    );
+    
+    NewComponent MAX_Invert_Filter
+    (
+        CLK_Edge => true,
+        
+        Threshold => Filter_Threshold,
+
+        iStream  => MAX_Invert_Filter_iStream,
+        oStream  => MAX_Invert_Filter_oStream,
+    );
+
+    --Output image with HDMI-------------------------------------------------------------
+
+    SIGNAL Pixel_CLK : STD_LOGIC;
+    
+    NewComponent CAM_HDMI_Out
+    (
+        iStream     => Output_Stream,
+        sdram_addr  => Capture_sdram_addr,
+        sdram_ba    => Capture_sdram_ba,
+        sdram_cas_n => Capture_sdram_cas_n,
+        sdram_dq    => Capture_sdram_dq,
+        sdram_dqm   => Capture_sdram_dqm,
+        sdram_ras_n => Capture_sdram_ras_n,
+        sdram_we_n  => Capture_sdram_we_n,
+        sdram_clk   => Capture_sdram_clk,
+        Pixel_CLK   => Pixel_CLK,
+        HDMI_DATA   => HDMI_DATA,
+        HDMI_CLK    => HDMI_CLK,
+        HDMI_HPD    => HDMI_HPD,
+    );
+    
+    --Detect numbers with CNN-------------------------------------------------------------
+    
+    NewComponent CNN
+    (
+        Input_Columns => 448, --28*16 = 448 < 640
+        Input_Rows    => 448, --28*16 = 448 < 480
+        Column_Offset => 80,  --0-448 -> 80-528
+        CNN_Columns   => 28,  --From MNIST Dataset
+        CNN_Rows      => 28,  --From MNIST Dataset
+
+        iStream       => CNN_Stream,
+        Prediction    => CNN_Prediction,
+        Probability   => CNN_Probability,
+    );
+    
+    
+    Process()
+    {
+        Thread
+        {
+            Wait(500ms);
+            NewFunction newString (messageStr);
+            messageStr.Length <= 0;
+            
+            NewFunction newConstString (s"\nWahrscheinlichkeit: ", label1);
+            NewFunction stringAppend (label1, messageStr);
+            
+            NewFunction newString (valStr);
+            NewFunction naturalToStringInst (CNN_Probability, valStr, bcdEna, bcdBus, bcdBin, bcdDec);
+            NewFunction stringAppend (valStr, messageStr);
+            
+            NewFunction newConstString (s"\nVorhersage: ", label2);
+            NewFunction stringAppend (label2, messageStr);
+            
+            NewFunction naturalToString (CNN_Prediction, valStr, bcdEna, bcdBus, bcdBin, bcdDec);
+            NewFunction stringAppend (valStr, messageStr);
+            
+            NewFunction printString (messageStr, UART_Interface_TX_Data, UART_Interface_TX_Busy, UART_Interface_TX_Enable);
+        }
+        
+        Thread
+        {
+            NewFunction newString (receiveStr);
+            NewFunction readString (receiveStr, UART_Interface_RX_Data, UART_Interface_RX_Busy);
+            
+            NewFunction stringToNatural (receiveStr, Filter_Threshold);
+        }
+    }
+    
+    SIGNAL UART_Interface_TX_Enable: STD_LOGIC := '0';
+    SIGNAL UART_Interface_TX_Busy: STD_LOGIC := '0';
+    SIGNAL UART_Interface_TX_Data: STD_LOGIC_VECTOR(8 - 1 downto 0) := (others => '0');
+    SIGNAL UART_Interface_RX_Busy: STD_LOGIC := '0';
+    SIGNAL UART_Interface_RX_Data: STD_LOGIC_VECTOR(8 - 1 downto 0) := (others => '0');
+    NewComponent UART_Interface
+    (
+        Baud_Rate     => 19200,
+        
+        RX            => RX,
+        TX            => TX,
+        TX_Enable     => UART_Interface_TX_Enable,
+        TX_Busy       => UART_Interface_TX_Busy,
+        TX_Data       => UART_Interface_TX_Data,
+        RX_Data       => UART_Interface_RX_Data,
+        RX_Busy       => UART_Interface_RX_Busy,
+    );
+    
+}
